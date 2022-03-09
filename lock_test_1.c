@@ -19,13 +19,13 @@ int changeme = 0; // Global data structure to change
 pthread_mutex_t * lock; // Global lock
 
 void *count(void *arg) {
-	unsigned long int c = (unsigned long int)arg;    
+	unsigned long int c = (unsigned long int) arg;    
     
     // Get lock, print out changeme, change it to pid * 10, wait by counting, exit
-    int res = pthread_mutex_lock(lock);
-    printf("id: 0x%d read changeme as %d\n", pthread_self(), changeme);
-    changme = pthread_self() * 10;
-    printf("id: 0x%d changed changeme to %d\n", pthread_self(), changeme);
+    pthread_mutex_lock(lock);
+    printf("id: 0x%ld read changeme as %d\n", pthread_self(), changeme);
+    changeme = pthread_self() * 10;
+    printf("id: 0x%ld changed changeme to %d\n", pthread_self(), changeme);
     
     // Waste time
     int i;
@@ -33,11 +33,11 @@ void *count(void *arg) {
 		if ((i % 10000000) == 0) {
 			printf("id: 0x%lx counted to %d of %ld\n",
 			       pthread_self(), i, c);
-		}
+        }
 	}
     
     // Exit critical region
-    res = pthread_mutex_unlock(lock);
+    pthread_mutex_unlock(lock);
     
     // Waste some more time to see normal scheduling in action
 	for (i = i; i < c; i++) {
@@ -52,8 +52,8 @@ void *count(void *arg) {
 
 int main(int argc, char **argv) {
 	pthread_t threads[THREAD_CNT];
-    lock = malloc(sizeof(pthread_mutex));
-    int res = pthread_mutex_init(lock, NULL); // Init lock
+    lock = malloc(sizeof(pthread_mutex_t));
+    pthread_mutex_init(lock, NULL); // Init lock
 	int i;
 	for(i = 0; i < THREAD_CNT; i++) {
 		pthread_create(&threads[i], NULL, count,

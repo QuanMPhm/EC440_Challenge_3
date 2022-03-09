@@ -110,6 +110,7 @@ static void schedule(int signal)
     if (global_queue.cur_thread_count == 1 && global_queue.now_thread->thread_block->thr_status == TS_RUNNING) return;   
 
     // Set current running thread to IS_READY and the previous thread
+    // Implicit here is that if lock functions have set status to TS_BLOCKED, then it will be TS_BLOCKED, bad programming
     if (global_queue.now_thread->thread_block->thr_status == TS_RUNNING) global_queue.now_thread->thread_block->thr_status = TS_READY;
     global_queue.prev_thread = global_queue.now_thread;
     
@@ -327,11 +328,12 @@ pthread_t pthread_self(void)
 	return global_queue.now_thread->thread_block->thr_id;
 }
 
-// static void lock() 
-// {}
+// Utility functions to disable and enable timer signal handling
+static void lock() 
+{}
 
-// static void unlock()
-// {}
+static void unlock()
+{}
 
 
 int pthread_mutex_init(
@@ -347,7 +349,6 @@ int pthread_mutex_init(
     printf("--- In mutex_init!\n");
     
     // Init mutex struct
-    mutex = malloc(sizeof(pthread_mutex_t));
     struct mutex_struct * mutex_str = malloc(sizeof(struct mutex_struct));
     mutex_str->is_locked = false;
     mutex_str->first = NULL;
@@ -378,6 +379,7 @@ int pthread_mutex_destroy(
     free(mutex_str);
     free(mutex);
     
+    
     return 0;
 }
 
@@ -392,6 +394,24 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
     */
     
     printf("--- In mutex_lock!\n");
+    lock();
+    
+    struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
+    if (mutex_str->is_locked) {
+        // If locked already acquired, block thread, add to queue, and schedule
+        
+        global_queue.now_thread->thread_block->thr_status = TS_BLOCKED;
+        struct blocked_node * temp_node = mutex_str->first;
+        
+        while (temp_node != NULL) temp_node = temp_node->next;
+        temp_node = malloc(sizeof(struct blocked_node));
+        temp_node->thr_id = pthread_self();
+        temp_node->next = NULL;
+        
+        schedule(0);
+    } else mutex_str->is_locked = true;
+    
+    unlock();
     
     return 0;
 }
@@ -406,6 +426,25 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
     */
     
     printf("--- In mutex_unlock!\n");
+    lock();
+    
+    struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
+    if (!mutex_str->is_locked) return -1; // Error condition, lock is locked
+    
+    // Get the thread id of first thread in list, serach global thread list to unblock it.
+    // If list is empty, set lock to unlocked
+    // DON'T Schedule
+    
+    pthread_t first_t = mutex_str->first->thr_id;
+    struct thread_queue_block * temp_blk = global_queue.now_thread;
+    pthread_t temp_t = temp_blk->thread_block->thr_id;
+    
+    while (temp_t != first_t) {
+        temp_blk = temp_blk->next_thread;
+        temp_t = temp_blk->thread_block->thr_id;
+    }
+    unlock();
+    
     
     return 0;
 }
