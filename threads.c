@@ -28,13 +28,30 @@
 #define JB_RSP 6
 #define JB_PC 7
 
+struct blocked_node {
+    pthread_t thr_id;
+    struct blocked_node * next;
+};
+
+// Mutex data structure
+struct mutex_struct {
+    bool is_locked;
+    struct blocked_node * first;  // Points to first blocked thread in linked list
+};
+
+struct barrier_struct {
+    
+};
+
+
 /* thread_status identifies the current state of a thread. You can add, rename,
  * or delete these values. This is only a suggestion. */
 enum thread_status
 {
 	TS_EXITED,
 	TS_RUNNING,
-	TS_READY
+	TS_READY,
+    TS_BLOCKED  // For threads blocked on mutex/barrier
 };
 
 /* The thread control block stores information about a thread. You will
@@ -310,27 +327,87 @@ pthread_t pthread_self(void)
 	return global_queue.now_thread->thread_block->thr_id;
 }
 
+// static void lock() 
+// {}
+
+// static void unlock()
+// {}
+
+
 int pthread_mutex_init(
 	pthread_mutex_t *restrict mutex,
 	const pthread_mutexattr_t *restrict attr) 
 {
+    /* 
+    The pthread_mutex_init() function initializes a given mutex. 
+    The attr argument is unused in this assignment (we will always test it with NULL). 
+    Behavior is undefined when an already-initialized mutex is re-initialized. Always return 0. 
+    */
     
+    printf("--- In mutex_init!\n");
+    
+    // Init mutex struct
+    mutex = malloc(sizeof(pthread_mutex_t));
+    struct mutex_struct * mutex_str = malloc(sizeof(struct mutex_struct));
+    mutex_str->is_locked = false;
+    mutex_str->first = NULL;
+    mutex->__align = (long int) mutex_str;
+    
+    return 0;
 }
 
 int pthread_mutex_destroy(
 	pthread_mutex_t *mutex) 
 {
-
+    /* 
+    destroys the referenced mutex. Behavior is undefined when a mutex 
+    is destroyed while a thread is currently blocked on, or when destroying 
+    a mutex that has not been initialized. Behavior is undefined when
+    locking or unlocking a destroyed mutex, unless it has been 
+    re-initialized by pthread_mutex_init. Return 0 on success. 
+    */
+    printf("--- In mutex_destroy!\n");
+    struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
+    struct blocked_node * temp;
+    struct blocked_node * next_temp = mutex_str->first;
+    while (next_temp != NULL) {
+        temp = next_temp;
+        next_temp = next_temp->next;
+        free(temp);
+    }
+    free(mutex_str);
+    free(mutex);
+    
+    return 0;
 }
 
 int pthread_mutex_lock(pthread_mutex_t *mutex) 
 {
-
+    /*
+     locks a referenced mutex. If the mutex is not already locked, 
+     the current thread acquires the lock and proceeds. 
+     If the mutex is already locked, the thread blocks until the mutex is available. 
+     If multiple threads are waiting on a mutex, the order that they 
+     are awoken is undefined. Return 0 on success, or an error code otherwise.
+    */
+    
+    printf("--- In mutex_lock!\n");
+    
+    return 0;
 }
 
 int pthread_mutex_unlock(pthread_mutex_t *mutex)
 {
-
+    /*
+    unlocks a referenced mutex. If another thread is waiting on this mutex, 
+    it will be woken up so that it can continue running. 
+    Note that when that happens, the woken thread will finish 
+    acquiring the lock. Return 0 on success, or an error code otherwise.
+    */
+    
+    printf("--- In mutex_unlock!\n");
+    
+    return 0;
 }
 
 
@@ -339,22 +416,18 @@ int pthread_barrier_init(
     const pthread_barrierattr_t *restrict attr,
     unsigned count)
 {
-
+    return 0;
 }
 
 int pthread_barrier_destroy(pthread_barrier_t *barrier)
 {
+    return 0;
 }
 
 int pthread_barrier_wait(pthread_barrier_t *barrier) 
 {
+    return 0;
 }
-
-static void lock() 
-{}
-
-static void unlock()
-{}
 
 /* Don't implement main in this file!
  * This is a library of functions, not an executable program. If you

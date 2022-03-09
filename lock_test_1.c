@@ -63,7 +63,9 @@ int main(int argc, char **argv) {
 #if HAVE_PTHREAD_JOIN == 0
 	
     // main thread will also change changeme after making thread. main should be blocked when second thread in crit region
-	count((void *)(intptr_t)((i + 1) * COUNTER_FACTOR));
+	count((void *)(intptr_t)((i + 2) * COUNTER_FACTOR));
+    // Destroy lock
+    pthread_mutex_destroy(lock);
 #else
 	/* Collect statuses of the other threads, waiting for them to finish */
 	for(i = 0; i < THREAD_CNT; i++) {
