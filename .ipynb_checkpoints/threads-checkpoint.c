@@ -6,6 +6,7 @@
 #include <setjmp.h>
 #include <sys/time.h>
 #include <signal.h>
+#include <errno.h>
 
 /* You can support more threads. At least support this many. */
 #define MAX_THREADS 128
@@ -40,7 +41,7 @@ struct mutex_struct {
 };
 
 struct barrier_struct {
-    
+    int count;
 };
 
 
@@ -100,7 +101,7 @@ static void schedule(int signal)
 	 * 2. Determine which is the next thread that should run
 	 * 3. Switch to the next thread (use longjmp on that thread's jmp_buf)
 	 */
-    // printf("--- In scheduler\n");
+    printf("--- In scheduler\n");
     if (global_queue.cur_thread_count == 0) {
         // printf("That's a wrap!\n");
         exit(0);
@@ -140,6 +141,7 @@ static void timer_handler(int sig) {
 }
 
 static void exit_handler(void) {
+    printf("--- In exit handler\n");
     if (global_queue.cur_thread_count != 0) pthread_exit(NULL);
 }
 
@@ -330,10 +332,20 @@ pthread_t pthread_self(void)
 
 // Utility functions to disable and enable timer signal handling
 static void lock() 
-{}
+{
+    sigset_t x;
+    sigemptyset (&x);
+    sigaddset(&x, SIGALRM);
+    sigprocmask(SIG_BLOCK, &x, NULL);
+}
 
 static void unlock()
-{}
+{
+    sigset_t x;
+    sigemptyset (&x);
+    sigaddset(&x, SIGALRM);
+    sigprocmask(SIG_UNBLOCK, &x, NULL);
+}
 
 
 int pthread_mutex_init(
@@ -397,16 +409,24 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
     lock();
     
     struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
+    if (mutex_str == NULL) return -1; // Error situation, mutex not init
     if (mutex_str->is_locked) {
+        printf("--- Thread is blocked on lock %p\n", mutex);
         // If locked already acquired, block thread, add to queue, and schedule
         
         global_queue.now_thread->thread_block->thr_status = TS_BLOCKED;
-        struct blocked_node * temp_node = mutex_str->first;
         
-        while (temp_node != NULL) temp_node = temp_node->next;
-        temp_node = malloc(sizeof(struct blocked_node));
-        temp_node->thr_id = pthread_self();
-        temp_node->next = NULL;
+        if (mutex_str->first == NULL) {
+            mutex_str->first = malloc(sizeof(struct blocked_node));
+            mutex_str->first->thr_id = pthread_self();
+            mutex_str->first->next = NULL;
+        } else {
+            struct blocked_node * temp_node = mutex_str->first;
+            while (temp_node->next != NULL) temp_node = temp_node->next;
+            temp_node->next = malloc(sizeof(struct blocked_node));
+            temp_node->next->thr_id = pthread_self();
+            temp_node->next->next = NULL;            
+        }
         
         schedule(0);
     } else mutex_str->is_locked = true;
@@ -429,23 +449,33 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
     lock();
     
     struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
+    if (mutex_str == NULL) return -1; // Error situation, mutex not init
     if (!mutex_str->is_locked) return -1; // Error condition, lock is locked
     
-    // Get the thread id of first thread in list, serach global thread list to unblock it.
-    // If list is empty, set lock to unlocked
-    // DON'T Schedule
-    
-    pthread_t first_t = mutex_str->first->thr_id;
-    struct thread_queue_block * temp_blk = global_queue.now_thread;
-    pthread_t temp_t = temp_blk->thread_block->thr_id;
-    
-    while (temp_t != first_t) {
-        temp_blk = temp_blk->next_thread;
-        temp_t = temp_blk->thread_block->thr_id;
+    // If lock's list empty
+    if (mutex_str->first == NULL) { 
+        mutex_str->is_locked = false;
+    } else {
+        // If list is not empty, set the first thread in lock's queue to being ready
+        // Set unlocked thread as ready in global thread queue
+        pthread_t first_t = mutex_str->first->thr_id;
+        struct thread_queue_block * temp_blk = global_queue.now_thread;
+        pthread_t temp_t = temp_blk->thread_block->thr_id;
+
+        while (temp_t != first_t) {
+            temp_blk = temp_blk->next_thread;
+            temp_t = temp_blk->thread_block->thr_id;
+        }
+
+        temp_blk->thread_block->thr_status = TS_READY;
+
+        // Remove unlocked thread from lock's queue
+        struct blocked_node * temp_b_n = mutex_str->first;
+        mutex_str->first = mutex_str->first->next;
+        free(temp_b_n);
     }
+    
     unlock();
-    
-    
     return 0;
 }
 
@@ -455,16 +485,47 @@ int pthread_barrier_init(
     const pthread_barrierattr_t *restrict attr,
     unsigned count)
 {
+    /*
+    The pthread_barrier_init() function initializes a given barrier. 
+    The attr argument is unused in this assignment (we will always test it with NULL). 
+    The count argument specifies how many threads must enter the barrier before 
+    any threads can exit the barrier. Return 0 on success. It is an error if 
+    count is equal to zero (return EINVAL). Behavior is undefined when an 
+    already-initialized barrier is re-initialized.
+    */
+    
+    if (count == 0) return EINVAL;
+    
+    
     return 0;
 }
 
 int pthread_barrier_destroy(pthread_barrier_t *barrier)
 {
+    /*
+    The pthread_barrier_destroy() function destroys the referenced barrier. 
+    Behavior is undefined when a barrier is destroyed while a thread is 
+    waiting in the barrier or when destroying a barrier that has not 
+    been initialized. Behavior is undefined when attempting to wait in 
+    a destroyed barrier, unless it has been re-initialized by pthread_barrier_init. Return 0 on success.
+    */
+    
     return 0;
 }
 
 int pthread_barrier_wait(pthread_barrier_t *barrier) 
 {
+    /*
+    The pthread_barrier_wait() function enters the referenced barrier. 
+    The calling thread shall not proceed until the required number 
+    of threads (from count in pthread_barrier_init) have already entered the barrier. 
+    Other threads shall be allowed to proceed while this thread is in 
+    a barrier (unless they are also blocked for other reasons). 
+    Upon exiting a barrier, the order that the threads are awoken is undefined. 
+    Exactly one of the returned threads shall return PTHREAD_BARRIER_SERIAL_THREAD 
+    (it does not matter which one). The rest of the threads shall return 0.
+    */
+    
     return 0;
 }
 
