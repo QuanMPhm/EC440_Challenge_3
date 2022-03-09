@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <setjmp.h>
 #include <sys/time.h>
+#include <time.h>
 #include <signal.h>
 #include <errno.h>
 
@@ -41,7 +42,9 @@ struct mutex_struct {
 };
 
 struct barrier_struct {
-    int count;
+    int target_count;
+    int blocked_count;
+    pthread_t * thr_list;  // List of thread ids of blocked threads
 };
 
 
@@ -135,7 +138,7 @@ static void schedule(int signal)
 }
 
 static void timer_handler(int sig) {
-    // printf("--- In timer handler\n");
+    printf("--- In timer handler\n");
     schedule(sig);
     return;
 }
@@ -408,6 +411,9 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
     printf("--- In mutex_lock!\n");
     lock();
     
+    struct timespec time_sleep = {.tv_nsec = 500000000};
+    nanosleep(&time_sleep, NULL);
+    
     struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
     if (mutex_str == NULL) return -1; // Error situation, mutex not init
     if (mutex_str->is_locked) {
@@ -447,6 +453,9 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
     
     printf("--- In mutex_unlock!\n");
     lock();
+    
+    struct timespec time_sleep = {.tv_nsec = 500000000};
+    nanosleep(&time_sleep, NULL);
     
     struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
     if (mutex_str == NULL) return -1; // Error situation, mutex not init
@@ -495,8 +504,12 @@ int pthread_barrier_init(
     */
     
     if (count == 0) return EINVAL;
+    struct barrier_struct * barrier_str = malloc(sizeof(struct barrier_struct));
+    barrier_str->target_count = count;
+    barrier_str->blocked_count = 0;
+    barrier_str->thr_list = malloc(sizeof(pthread_t) * count);
     
-    
+    barrier->__align = (long int) barrier_str;
     return 0;
 }
 
@@ -509,6 +522,12 @@ int pthread_barrier_destroy(pthread_barrier_t *barrier)
     been initialized. Behavior is undefined when attempting to wait in 
     a destroyed barrier, unless it has been re-initialized by pthread_barrier_init. Return 0 on success.
     */
+    
+    struct barrier_struct * barrier_str = (struct barrier_struct *) barrier->__align;
+    if (barrier_str == NULL) return -1;
+    
+    free(barrier_str->thr_list);
+    free(barrier_str);
     
     return 0;
 }
@@ -526,6 +545,43 @@ int pthread_barrier_wait(pthread_barrier_t *barrier)
     (it does not matter which one). The rest of the threads shall return 0.
     */
     
+    lock();
+    
+    struct barrier_struct * barrier_str = (struct barrier_struct *) barrier->__align;
+    if (barrier_str == NULL) return -1;
+    
+    // Enough threads enter barrier
+    if (barrier_str->blocked_count + 1 == barrier_str->target_count) {
+        for (int i = 0; i < barrier_str->blocked_count; i++) {
+            
+            // Find all threads being blocked by barrier, and unblock them
+            pthread_t next_t = barrier_str->thr_list[i];
+            struct thread_queue_block * temp_blk = global_queue.now_thread;
+            pthread_t temp_t = temp_blk->thread_block->thr_id;
+
+            while (temp_t != next_t) {
+                temp_blk = temp_blk->next_thread;
+                temp_t = temp_blk->thread_block->thr_id;
+            }
+            
+            temp_blk->thread_block->thr_status = TS_READY;
+            
+        }
+        
+        barrier_str->blocked_count = 0;
+        unlock();
+        return PTHREAD_BARRIER_SERIAL_THREAD;
+    } else {
+    // Not enough threads
+        barrier_str->thr_list[barrier_str->blocked_count] = pthread_self();
+        barrier_str->blocked_count++;
+        
+        global_queue.now_thread->thread_block->thr_status = TS_BLOCKED;
+        
+        schedule(0);
+    }
+    
+    unlock();
     return 0;
 }
 

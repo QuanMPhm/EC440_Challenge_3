@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <time.h>
+#include <unistd.h>
 
 /* How many threads (aside from main) to create */
 #define THREAD_CNT 1
@@ -27,12 +29,16 @@ void *count(void *arg) {
     changeme = pthread_self() * 10;
     printf("id: 0x%ld changed changeme to %d\n", pthread_self(), changeme);
     
+    // struct timespec time_sleep = {.tv_nsec = 50000000};
+    
     // Waste time
     int i;
 	for (i = 0; i < c/2; i++) {
 		if ((i % 10000000) == 0) {
 			printf("id: 0x%lx counted to %d of %ld\n",
 			       pthread_self(), i, c);
+            // sleep(10);
+            // nanosleep(&time_sleep, NULL);
         }
 	}
     
@@ -57,7 +63,7 @@ int main(int argc, char **argv) {
 	int i;
 	for(i = 0; i < THREAD_CNT; i++) {
 		pthread_create(&threads[i], NULL, count,
-		               (void *)(intptr_t)((i + 1) * COUNTER_FACTOR));
+		               (void *)(intptr_t)((i + 2) * COUNTER_FACTOR));
 	}
 
 #if HAVE_PTHREAD_JOIN == 0
