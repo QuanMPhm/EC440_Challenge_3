@@ -5,16 +5,22 @@
 #include <time.h>
 #include <unistd.h>
 
+
+/*
+This test inits a mutex lock and starts two threads.
+Both threads start by taking on the lock, count un to half-way, releases the lock, then continues counting until finish
+You shuold see that at the start, one thread will take the lock first, and the second thread will immediately get blocked
+You should initially only see print statements from the thread that first took the lock.
+After the first thread relesaes the lock, the second thread should now be scheduled normally
+Both threads also change a shared global variable "changeme" so you can observe the exclusivity property
+
+*/
 /* How many threads (aside from main) to create */
 #define THREAD_CNT 1
 
 /* pthread_join is not implemented in homework 2 */
 #define HAVE_PTHREAD_JOIN 0
 
-/* Each counter goes up to a multiple of this value. If your test is too fast
- * use a bigger number. Too slow? Use a smaller number. See the comment about
- * sleeping in count() to avoid this size-tuning issue.
- */
 #define COUNTER_FACTOR 100000000
 
 int changeme = 0; // Global data structure to change

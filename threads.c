@@ -411,8 +411,8 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
     printf("--- In mutex_lock!\n");
     lock();
     
-    struct timespec time_sleep = {.tv_nsec = 500000000};
-    nanosleep(&time_sleep, NULL);
+    // struct timespec time_sleep = {.tv_nsec = 500000000};
+    // nanosleep(&time_sleep, NULL);
     
     struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
     if (mutex_str == NULL) return -1; // Error situation, mutex not init
@@ -454,8 +454,8 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
     printf("--- In mutex_unlock!\n");
     lock();
     
-    struct timespec time_sleep = {.tv_nsec = 500000000};
-    nanosleep(&time_sleep, NULL);
+    // struct timespec time_sleep = {.tv_nsec = 500000000};
+    // nanosleep(&time_sleep, NULL);
     
     struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
     if (mutex_str == NULL) return -1; // Error situation, mutex not init
@@ -503,6 +503,8 @@ int pthread_barrier_init(
     already-initialized barrier is re-initialized.
     */
     
+    printf("--- In barrier init!\n");
+    
     if (count == 0) return EINVAL;
     struct barrier_struct * barrier_str = malloc(sizeof(struct barrier_struct));
     barrier_str->target_count = count;
@@ -522,6 +524,8 @@ int pthread_barrier_destroy(pthread_barrier_t *barrier)
     been initialized. Behavior is undefined when attempting to wait in 
     a destroyed barrier, unless it has been re-initialized by pthread_barrier_init. Return 0 on success.
     */
+    
+    printf("--- In barrier destroy!\n");
     
     struct barrier_struct * barrier_str = (struct barrier_struct *) barrier->__align;
     if (barrier_str == NULL) return -1;
@@ -544,6 +548,8 @@ int pthread_barrier_wait(pthread_barrier_t *barrier)
     Exactly one of the returned threads shall return PTHREAD_BARRIER_SERIAL_THREAD 
     (it does not matter which one). The rest of the threads shall return 0.
     */
+    
+    printf("--- In barrier wait!\n");
     
     lock();
     
