@@ -3,13 +3,13 @@ override CFLAGS := -Wall -Werror -std=gnu99 -O0 -g $(CFLAGS) -I.
 # Build the threads.o file
 threads.o: threads.c ec440threads.h
 
-barrier_test_1.o: barrier_test_1.c ec440threads.h
+lock_test_1.o: lock_test_1.c ec440threads.h
 
-barrier_test_1: barrier_test_1.o threads.o
+lock_test_1: lock_test_1.o threads.o
 	$(CC) $(LDFLAGS) $+ $(LOADLIBES) $(LDLIBS) -o $@
 
 
-test_files=barrier_test_1
+test_files=lock_test_1
 
 # Run the test programs
 check: $(test_files) 

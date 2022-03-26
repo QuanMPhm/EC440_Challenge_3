@@ -58,14 +58,32 @@ void *count(void *arg) {
 	return NULL;
 }
 
+void * count2(void * arg) {
+    int i;
+    unsigned long int c = (unsigned long int) arg; 
+    for (i = 0; i < c; i++) {
+        if (i == c * 0.8) pthread_barrier_wait(&barrier);
+        
+		if ((i % 10000000) == 0) {
+			printf("id: 0x%lx counted to %d of %ld\n",
+			       pthread_self(), i, c);
+		}
+        
+    }
+    return NULL;
+}
+
+
 int main(int argc, char **argv) {
-	pthread_t threads[THREAD_CNT];
-    pthread_barrier_init(&barrier, NULL, 2); // Init lock
+	pthread_t threads[THREAD_CNT + 1];
+    pthread_barrier_init(&barrier, NULL, 3); // Init lock
 	int i;
 	for(i = 0; i < THREAD_CNT; i++) {
 		pthread_create(&threads[i], NULL, count,
 		               (void *)(intptr_t)((i + 1) * COUNTER_FACTOR));
 	}
+    
+    pthread_create(&threads[i + 1], NULL, count2, (void *)(intptr_t)((i + 2) * COUNTER_FACTOR));
 
 #if HAVE_PTHREAD_JOIN == 0
 	

@@ -417,7 +417,7 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
     struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
     if (mutex_str == NULL) return -1; // Error situation, mutex not init
     if (mutex_str->is_locked) {
-        printf("--- Thread is blocked on lock %p\n", mutex);
+        printf("--- Thread %ld is blocked on lock %p\n", pthread_self(), mutex);
         // If locked already acquired, block thread, add to queue, and schedule
         
         global_queue.now_thread->thread_block->thr_status = TS_BLOCKED;
@@ -433,7 +433,7 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
             temp_node->next->thr_id = pthread_self();
             temp_node->next->next = NULL;            
         }
-        
+        unlock();
         schedule(0);
     } else mutex_str->is_locked = true;
     
@@ -459,7 +459,7 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
     
     struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
     if (mutex_str == NULL) return -1; // Error situation, mutex not init
-    if (!mutex_str->is_locked) return -1; // Error condition, lock is locked
+    // if (!mutex_str->is_locked) return -1; // Error condition, lock is locked
     
     // If lock's list empty
     if (mutex_str->first == NULL) { 
@@ -505,6 +505,8 @@ int pthread_barrier_init(
     
     printf("--- In barrier init!\n");
     
+    lock();
+    
     if (count == 0) return EINVAL;
     struct barrier_struct * barrier_str = malloc(sizeof(struct barrier_struct));
     barrier_str->target_count = count;
@@ -512,6 +514,8 @@ int pthread_barrier_init(
     barrier_str->thr_list = malloc(sizeof(pthread_t) * count);
     
     barrier->__align = (long int) barrier_str;
+    
+    unlock();
     return 0;
 }
 
@@ -584,6 +588,7 @@ int pthread_barrier_wait(pthread_barrier_t *barrier)
         
         global_queue.now_thread->thread_block->thr_status = TS_BLOCKED;
         
+        unlock();
         schedule(0);
     }
     
