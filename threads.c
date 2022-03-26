@@ -38,6 +38,7 @@ struct blocked_node {
 // Mutex data structure
 struct mutex_struct {
     bool is_locked;
+    pthread_t owner_id;
     struct blocked_node * first;  // Points to first blocked thread in linked list
 };
 
@@ -367,6 +368,7 @@ int pthread_mutex_init(
     struct mutex_struct * mutex_str = malloc(sizeof(struct mutex_struct));
     mutex_str->is_locked = false;
     mutex_str->first = NULL;
+    mutex_str->owner_id = 0;
     mutex->__align = (long int) mutex_str;
     
     return 0;
@@ -415,7 +417,9 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
     // nanosleep(&time_sleep, NULL);
     
     struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
-    if (mutex_str == NULL) return -1; // Error situation, mutex not init
+    if (mutex_str == NULL) return EINVAL; // Error situation, mutex not init
+    if (mutex_str->is_locked &&  mutex_str->owner_id == pthread_self()) return EDEADLK; // Mutex locked twice by its owner
+    
     if (mutex_str->is_locked) {
         // printf("--- Thread %ld is blocked on lock %p\n", pthread_self(), mutex);
         // If locked already acquired, block thread, add to queue, and schedule
@@ -435,7 +439,10 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
         }
         unlock();
         schedule(0);
-    } else mutex_str->is_locked = true;
+    } else {
+        mutex_str->owner_id = pthread_self();
+        mutex_str->is_locked = true;
+    }
     
     unlock();
     
@@ -458,8 +465,8 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
     // nanosleep(&time_sleep, NULL);
     
     struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
-    if (mutex_str == NULL) return -1; // Error situation, mutex not init
-    // if (!mutex_str->is_locked) return -1; // Error condition, lock is locked
+    if (mutex_str == NULL) EINVAL; // Error situation, mutex not init
+    if (mutex_str->owner_id != pthread_self()) return EPERM; // Error condition, you don't own me!
     
     // If lock's list empty
     if (mutex_str->first == NULL) { 
@@ -467,8 +474,9 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
     } else {
         // If list is not empty, set the first thread in lock's queue to being ready
         // Set unlocked thread as ready in global thread queue
-        pthread_t first_t = mutex_str->first->thr_id;
         struct thread_queue_block * temp_blk = global_queue.now_thread;
+        
+        pthread_t first_t = mutex_str->first->thr_id;
         pthread_t temp_t = temp_blk->thread_block->thr_id;
 
         while (temp_t != first_t) {
@@ -477,7 +485,10 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
         }
 
         temp_blk->thread_block->thr_status = TS_READY;
-
+        
+        //Set owner to newly unblocked thread
+        mutex_str->owner_id = first_t;
+        
         // Remove unlocked thread from lock's queue
         struct blocked_node * temp_b_n = mutex_str->first;
         mutex_str->first = mutex_str->first->next;
