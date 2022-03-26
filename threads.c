@@ -364,12 +364,15 @@ int pthread_mutex_init(
     
     // printf("--- In mutex_init!\n");
     
+    lock();
     // Init mutex struct
     struct mutex_struct * mutex_str = malloc(sizeof(struct mutex_struct));
     mutex_str->is_locked = false;
     mutex_str->first = NULL;
     mutex_str->owner_id = 0;
     mutex->__align = (long int) mutex_str;
+    
+    unlock();
     
     return 0;
 }
@@ -384,6 +387,8 @@ int pthread_mutex_destroy(
     locking or unlocking a destroyed mutex, unless it has been 
     re-initialized by pthread_mutex_init. Return 0 on success. 
     */
+    
+    lock();
     // printf("--- In mutex_destroy!\n");
     struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
     struct blocked_node * temp;
@@ -396,6 +401,7 @@ int pthread_mutex_destroy(
     free(mutex_str);
     free(mutex);
     
+    unlock();
     
     return 0;
 }
@@ -417,8 +423,14 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
     // nanosleep(&time_sleep, NULL);
     
     struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
-    if (mutex_str == NULL) return EINVAL; // Error situation, mutex not init
-    if (mutex_str->is_locked &&  mutex_str->owner_id == pthread_self()) return EDEADLK; // Mutex locked twice by its owner
+    if (mutex_str == NULL) {
+        unlock();
+        return EINVAL; // Error situation, mutex not init
+    }
+    if (mutex_str->is_locked && mutex_str->owner_id == pthread_self()) {
+        unlock();
+        return EDEADLK; // Mutex locked twice by its owner
+    }
     
     if (mutex_str->is_locked) {
         // printf("--- Thread %ld is blocked on lock %p\n", pthread_self(), mutex);
@@ -442,9 +454,8 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
     } else {
         mutex_str->owner_id = pthread_self();
         mutex_str->is_locked = true;
+        unlock();
     }
-    
-    unlock();
     
     return 0;
 }
@@ -465,8 +476,15 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
     // nanosleep(&time_sleep, NULL);
     
     struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
-    if (mutex_str == NULL) EINVAL; // Error situation, mutex not init
-    if (mutex_str->owner_id != pthread_self()) return EPERM; // Error condition, you don't own me!
+    if (mutex_str == NULL) {
+        unlock();
+        return EINVAL; // Error situation, mutex not init
+    }
+    
+    if (mutex_str->owner_id != pthread_self()) {
+        unlock();
+        return EPERM; // Error condition, you don't own me!
+    }
     
     // If lock's list empty
     if (mutex_str->first == NULL) { 
@@ -518,7 +536,10 @@ int pthread_barrier_init(
     
     lock();
     
-    if (count == 0) return EINVAL;
+    if (count == 0) {
+        unlock();
+        return EINVAL;
+    }
     struct barrier_struct * barrier_str = malloc(sizeof(struct barrier_struct));
     barrier_str->target_count = count;
     barrier_str->blocked_count = 0;
