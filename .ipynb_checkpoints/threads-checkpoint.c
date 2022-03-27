@@ -73,14 +73,13 @@ struct thread_control_block {
 	/* TODO: add information about the status (e.g., use enum thread_status) */
     enum thread_status thr_status;
 	/* Add other information you need to manage this thread */
-    
 };
 
-// Entry of the thread queue
-struct thread_queue_block {
-    struct thread_control_block * thread_block;    // TLB of thread
-    struct thread_queue_block * next_thread;   // Points to next thread is circular queue
-};
+// // Entry of the thread queue
+// struct thread_queue_block {
+//     struct thread_control_block * thread_block;    // TLB of thread
+//     struct thread_queue_block * next_thread;   // Points to next thread is circular queue
+// };
 
 /*
 Circular queue for scheduler
@@ -88,10 +87,8 @@ Circular queue for scheduler
 struct thread_queue {
     int abs_thread_count;                            // Number of threads ever made
     int cur_thread_count;                            // Number of currently active threads
-    struct thread_queue_block * first_thread;  // Points to "first" thread in circular queue
-    // struct thread_queue_block * next_thread;  // Points to next thread to be considered for scheduling in circular queue
-    struct thread_queue_block * now_thread;   // Points to currently running thread
-    struct thread_queue_block * prev_thread;  // Points to previously ran thread (for pthread_exit purposes)
+    int cur_thread_id;                                   // Index of currently running thread
+    struct thread_control_block thread_list[MAX_THREADS]; // Static global list of tcbs
 } global_queue;
 
 // to supress compiler error
@@ -105,47 +102,50 @@ static void schedule(int signal)
 	 * 2. Determine which is the next thread that should run
 	 * 3. Switch to the next thread (use longjmp on that thread's jmp_buf)
 	 */
-    // printf("--- In scheduler\n");
+    printf("--- In scheduler\n");
     if (global_queue.cur_thread_count == 0) {
         // printf("That's a wrap!\n");
         exit(0);
     }
-    if (setjmp(global_queue.now_thread->thread_block->thr_registers) == pthread_self()) return; 
+    
+    struct thread_control_block * cur_tcb =  &global_queue.thread_list[global_queue.cur_thread_id];
+    
+    if (setjmp(cur_tcb->thr_registers) == 1) return; 
     // If only 1 running thread, dont schedule
-    if (global_queue.cur_thread_count == 1 && global_queue.now_thread->thread_block->thr_status == TS_RUNNING) return;   
+    if (global_queue.cur_thread_count == 1 && cur_tcb->thr_status == TS_RUNNING) return;   
 
     // Set current running thread to IS_READY and the previous thread
     // Implicit here is that if lock functions have set status to TS_BLOCKED, then it will be TS_BLOCKED, bad programming
-    if (global_queue.now_thread->thread_block->thr_status == TS_RUNNING) global_queue.now_thread->thread_block->thr_status = TS_READY;
-    global_queue.prev_thread = global_queue.now_thread;
+    if (cur_tcb->thr_status == TS_RUNNING) cur_tcb->thr_status = TS_READY;
+    // global_queue.prev_thread = global_queue.now_thread;
     
-    struct thread_queue_block * next_thread_in_q = global_queue.now_thread->next_thread;
-    enum thread_status next_thr_status = next_thread_in_q->thread_block->thr_status;
+    // struct thread_queue_block * next_thread_in_q = global_queue.now_thread->next_thread;
+    // enum thread_status next_thr_status = next_thread_in_q->thread_block->thr_status;
     
     // Find next available thread
-    while (next_thr_status != TS_READY) {
-        global_queue.prev_thread = next_thread_in_q;
-        next_thread_in_q = next_thread_in_q->next_thread;
-        next_thr_status = next_thread_in_q->thread_block->thr_status;
+    int i = (global_queue.cur_thread_id + 1) % MAX_THREADS;
+    
+    while (global_queue.thread_list[i].thr_status != TS_READY) {
+        i = (i + 1) % MAX_THREADS;
     }
     
     // Set next available thread to be current running thread
-    global_queue.now_thread = next_thread_in_q;
-    next_thread_in_q->thread_block->thr_status = TS_RUNNING;
+    global_queue.cur_thread_id = i;
+    global_queue.thread_list[i].thr_status = TS_RUNNING;
     
     // Jump into wormhole
-    longjmp(next_thread_in_q->thread_block->thr_registers, next_thread_in_q->thread_block->thr_id);
+    longjmp(global_queue.thread_list[i].thr_registers, 1);
     
 }
 
 static void timer_handler(int sig) {
-    // printf("--- In timer handler\n");
+    printf("--- In timer handler\n");
     schedule(sig);
     return;
 }
 
 static void exit_handler(void) {
-    // printf("--- In exit handler\n");
+    printf("--- In exit handler\n");
     if (global_queue.cur_thread_count != 0) pthread_exit(NULL);
 }
 
@@ -161,22 +161,21 @@ static void scheduler_init()
 	 */
     
     // Allocate Tcb and queue entry from main thread
-    struct thread_control_block * main_tcb = malloc(sizeof(struct thread_control_block));
-    struct thread_queue_block * main_qb = malloc(sizeof(struct thread_queue_block));
+    // struct thread_control_block * main_tcb = malloc(sizeof(struct thread_control_block));
+    // struct thread_queue_block * main_qb = malloc(sizeof(struct thread_queue_block));
     
     // Init global queue
-    global_queue.first_thread = main_qb;
+    // global_queue.first_thread = main_qb;
     // global_queue.next_thread = thread_queue_block;
-    global_queue.prev_thread = NULL;
-    global_queue.now_thread = main_qb;
+    // global_queue.prev_thread = NULL;
+    // global_queue.now_thread = main_qb;
+    
+    global_queue.thread_list[0].thr_id = global_queue.abs_thread_count;
+    global_queue.thread_list[0].thr_status = TS_RUNNING;
+    
     global_queue.cur_thread_count = 1;
     global_queue.abs_thread_count = 1;
-    
-    main_tcb->thr_id = global_queue.abs_thread_count;
-    main_tcb->thr_status = TS_RUNNING;
-    main_qb->thread_block = main_tcb;
-    main_qb->next_thread = main_qb;        // Pointing to myself :D
-    
+    global_queue.cur_thread_id = 0;
     
     // Setup timer
     struct sigaction new_action;
@@ -200,7 +199,7 @@ int pthread_create(
 	void *(*start_routine) (void *), void *arg)
 {
     
-    // printf("--- In pthread_create\n");
+    printf("--- In pthread_create\n");
 	// Create the timer and handler for the scheduler. Create thread 0.
 	static bool is_first_call = true;
 	if (is_first_call)
@@ -250,25 +249,31 @@ int pthread_create(
 	 * should be the first thing you push on your stack.
 	 */
     
-    // Assume unlimited threads for now
-    global_queue.cur_thread_count++;
-    global_queue.abs_thread_count++;
-    // Allocate Tcb and queue entry from new thread
-    struct thread_control_block * new_tcb = malloc(sizeof(struct thread_control_block));
-    struct thread_queue_block * new_qb = malloc(sizeof(struct thread_queue_block));
+    if (global_queue.cur_thread_count == MAX_THREADS) return -1; // Exceed max thread count
+    
+    // First find an open spot in queue thats free
+    int i = (global_queue.cur_thread_id + 1) % MAX_THREADS;
+    while (global_queue.thread_list[i % MAX_THREADS].thr_status != TS_EXITED) i = (i + 1) % MAX_THREADS;
+    
+    
+    struct thread_control_block * new_tcb =  &global_queue.thread_list[i];
+    // struct thread_queue_block * new_qb = malloc(sizeof(struct thread_queue_block));
     new_tcb->thr_status = TS_READY;
     new_tcb->thr_id = global_queue.abs_thread_count;
-    *thread = global_queue.abs_thread_count;
+    // *thread = global_queue.abs_thread_count;
     
     // Put new thread after the currently running (New thread will be executed immediately)
-    new_qb->thread_block = new_tcb;
-    new_qb->next_thread = global_queue.now_thread->next_thread;
-    global_queue.now_thread->next_thread = new_qb;
+    // new_qb->thread_block = new_tcb;
+    // new_qb->next_thread = global_queue.now_thread->next_thread;
+    // global_queue.now_thread->next_thread = new_qb;
+    global_queue.cur_thread_count++;
+    global_queue.abs_thread_count++;
     
     // Create de la registers
     setjmp(new_tcb->thr_registers);    // Set new thread's reigsters initial values
     
     long unsigned int new_stack_ptr = (long unsigned int)  malloc(THREAD_STACK_SIZE);
+    new_tcb->thr_stack = (void *) new_stack_ptr;
     *((long unsigned int *) (new_stack_ptr + THREAD_STACK_SIZE)) = (long unsigned int) pthread_exit;   // Set top of stack to address of pthread_exit
     new_tcb->thr_registers[0].__jmpbuf[JB_RSP] = ptr_mangle(new_stack_ptr + THREAD_STACK_SIZE);  // Assign mangled rsp to beginning of malloc'ed mem for now
     new_tcb->thr_registers[0].__jmpbuf[JB_RBP] = new_tcb->thr_registers[0].__jmpbuf[JB_RSP];     // rbp = rsp
@@ -294,7 +299,7 @@ void pthread_exit(void *value_ptr)
 	 * - Update the thread's status to indicate that it has exited
 	 */
     
-    // printf("--- In pthread_exit\n");
+    printf("--- In pthread_exit\n");
     
 //     // Remove thread from global queue
 //     global_queue.prev_thread->next_thread =  global_queue.now_thread->next_thread;
@@ -310,12 +315,12 @@ void pthread_exit(void *value_ptr)
 //     free(dead_thr_stack_ptr);
     
     global_queue.cur_thread_count--;
-    global_queue.now_thread->thread_block->thr_status = TS_EXITED;
+    global_queue.thread_list[global_queue.cur_thread_id].thr_status = TS_EXITED;
     
     // Free the thread TLB, saving the 32600-sized block to be freed last
     // If this is not main() thread, don't free
-    if (global_queue.now_thread->thread_block->thr_id != 1) {
-        void * dead_thr_stack_ptr = global_queue.now_thread->thread_block->thr_stack;
+    if (global_queue.thread_list[global_queue.cur_thread_id].thr_id != 0) {
+        void * dead_thr_stack_ptr = global_queue.thread_list[global_queue.cur_thread_id].thr_stack;
         free(dead_thr_stack_ptr);
     }
     schedule(0);
@@ -331,7 +336,7 @@ pthread_t pthread_self(void)
 	 * a specific variable instead of -1.
 	 */
     
-	return global_queue.now_thread->thread_block->thr_id;
+	return global_queue.thread_list[global_queue.cur_thread_id].thr_id;
 }
 
 // Utility functions to disable and enable timer signal handling
@@ -362,7 +367,7 @@ int pthread_mutex_init(
     Behavior is undefined when an already-initialized mutex is re-initialized. Always return 0. 
     */
     
-    // printf("--- In mutex_init!\n");
+    printf("--- In mutex_init!\n");
     
     lock();
     // Init mutex struct
@@ -389,7 +394,7 @@ int pthread_mutex_destroy(
     */
     
     lock();
-    // printf("--- In mutex_destroy!\n");
+    printf("--- In mutex_destroy!\n");
     struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
     struct blocked_node * temp;
     struct blocked_node * next_temp = mutex_str->first;
@@ -416,7 +421,7 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
      are awoken is undefined. Return 0 on success, or an error code otherwise.
     */
     
-    // printf("--- In mutex_lock!\n");
+    printf("--- In mutex_lock!\n");
     lock();
     
     // struct timespec time_sleep = {.tv_nsec = 500000000};
@@ -433,11 +438,11 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
     }
     
     if (mutex_str->is_locked) {
-        // printf("--- Thread %ld is blocked on lock %p\n", pthread_self(), mutex);
+        printf("--- Thread %ld is blocked on lock %p\n", pthread_self(), mutex);
         // If locked already acquired, block thread, add to queue, and schedule
         
         global_queue.cur_thread_count--;
-        global_queue.now_thread->thread_block->thr_status = TS_BLOCKED;
+        global_queue.thread_list[global_queue.cur_thread_id].thr_status = TS_BLOCKED;
         
         if (mutex_str->first == NULL) {
             mutex_str->first = malloc(sizeof(struct blocked_node));
@@ -470,7 +475,7 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
     acquiring the lock. Return 0 on success, or an error code otherwise.
     */
     
-    // printf("--- In mutex_unlock!\n");
+    printf("--- In mutex_unlock!\n");
     lock();
     
     // struct timespec time_sleep = {.tv_nsec = 500000000};
@@ -496,17 +501,18 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
         
         global_queue.cur_thread_count++;
         
-        struct thread_queue_block * temp_blk = global_queue.now_thread;
+        // struct thread_control_block temp_blk = global_queue.thread_list[global_queue.cur_thread_id];
         
         pthread_t first_t = mutex_str->first->thr_id;
-        pthread_t temp_t = temp_blk->thread_block->thr_id;
+        // pthread_t temp_t = temp_blk.thr_id;
 
-        while (temp_t != first_t) {
-            temp_blk = temp_blk->next_thread;
-            temp_t = temp_blk->thread_block->thr_id;
-        }
+//         while (temp_t != first_t) {
+            
+//             temp_blk = temp_blk->next_thread;
+//             temp_t = temp_blk->thread_block->thr_id;
+//         }
 
-        temp_blk->thread_block->thr_status = TS_READY;
+        global_queue.thread_list[first_t].thr_status = TS_READY;
         
         //Set owner to newly unblocked thread
         mutex_str->owner_id = first_t;
@@ -565,7 +571,7 @@ int pthread_barrier_destroy(pthread_barrier_t *barrier)
     a destroyed barrier, unless it has been re-initialized by pthread_barrier_init. Return 0 on success.
     */
     
-    // printf("--- In barrier destroy!\n");
+    printf("--- In barrier destroy!\n");
     
     struct barrier_struct * barrier_str = (struct barrier_struct *) barrier->__align;
     if (barrier_str == NULL) return -1;
@@ -601,16 +607,16 @@ int pthread_barrier_wait(pthread_barrier_t *barrier)
         for (int i = 0; i < barrier_str->blocked_count; i++) {
             
             // Find all threads being blocked by barrier, and unblock them
-            pthread_t next_t = barrier_str->thr_list[i];
-            struct thread_queue_block * temp_blk = global_queue.now_thread;
-            pthread_t temp_t = temp_blk->thread_block->thr_id;
+            // pthread_t next_t = barrier_str->thr_list[i];
+            struct thread_control_block * temp_blk = &global_queue.thread_list[global_queue.cur_thread_id];
+            pthread_t temp_t = temp_blk->thr_id;
 
-            while (temp_t != next_t) {
-                temp_blk = temp_blk->next_thread;
-                temp_t = temp_blk->thread_block->thr_id;
-            }
+            // while (temp_t != next_t) {
+            //     temp_blk = temp_blk->next_thread;
+            //     temp_t = temp_blk->thread_block->thr_id;
+            // }
             
-            temp_blk->thread_block->thr_status = TS_READY;
+            global_queue.thread_list[temp_t].thr_status = TS_READY;
             
         }
         
@@ -622,7 +628,7 @@ int pthread_barrier_wait(pthread_barrier_t *barrier)
         barrier_str->thr_list[barrier_str->blocked_count] = pthread_self();
         barrier_str->blocked_count++;
         
-        global_queue.now_thread->thread_block->thr_status = TS_BLOCKED;
+        global_queue.thread_list[global_queue.cur_thread_id].thr_status = TS_BLOCKED;
         
         unlock();
         schedule(0);
