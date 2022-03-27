@@ -436,6 +436,7 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
         // printf("--- Thread %ld is blocked on lock %p\n", pthread_self(), mutex);
         // If locked already acquired, block thread, add to queue, and schedule
         
+        global_queue.cur_thread_count--;
         global_queue.now_thread->thread_block->thr_status = TS_BLOCKED;
         
         if (mutex_str->first == NULL) {
@@ -492,6 +493,9 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
     } else {
         // If list is not empty, set the first thread in lock's queue to being ready
         // Set unlocked thread as ready in global thread queue
+        
+        global_queue.cur_thread_count++;
+        
         struct thread_queue_block * temp_blk = global_queue.now_thread;
         
         pthread_t first_t = mutex_str->first->thr_id;
