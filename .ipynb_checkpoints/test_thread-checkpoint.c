@@ -7,13 +7,14 @@
 
 pthread_mutex_t mutex;
 pthread_mutex_t lock; // Global lock
+pthread_mutex_t lock2; // Global lock
 
 void *count(void *arg) {
 	unsigned long int c = (unsigned long int) arg;    
     
     // Get lock, print out changeme, change it to pid * 10, wait by counting, exit
     pthread_mutex_lock(&lock);
-    
+    pthread_mutex_lock(&lock2);
     // struct timespec time_sleep = {.tv_nsec = 50000000};
     
     // Waste time
@@ -29,6 +30,7 @@ void *count(void *arg) {
     
     // Exit critical region
     pthread_mutex_unlock(&lock);
+    pthread_mutex_unlock(&lock2);
     
     // Waste some more time to see normal scheduling in action
 	for (i = i; i < c; i++) {
@@ -43,10 +45,14 @@ void *count(void *arg) {
 
 int main() {
     pthread_t t_t = 0;
+    pthread_t t_t2 = 0;
     pthread_mutex_init(&lock, NULL); // Init lock
-    pthread_mutex_lock(&lock);
+    pthread_mutex_init(&lock2, NULL); // Init lock
     int res = pthread_create(&t_t, NULL, count, (void *)(intptr_t)((0 + 2) * 100000000));
-    printf("id: 0x%ld read changeme as %d\n", pthread_self(), res);
+    int res2 = pthread_create(&t_t2, NULL, count, (void *)(intptr_t)((0 + 2) * 100000000));
+    printf("%d%d", res, res2);
+    count((void *) (3 * 100000000));
     
+    pthread_mutex_destroy(&lock);
     return 0;
 }

@@ -38,7 +38,7 @@ struct blocked_node {
 // Mutex data structure
 struct mutex_struct {
     bool is_locked;
-    pthread_t owner_id;
+    // pthread_t owner_id;
     struct blocked_node * first;  // Points to first blocked thread in linked list
 };
 
@@ -105,7 +105,7 @@ static void schedule(int signal)
 	 * 2. Determine which is the next thread that should run
 	 * 3. Switch to the next thread (use longjmp on that thread's jmp_buf)
 	 */
-    // printf("--- In scheduler\n");
+    printf("--- In scheduler\n");
     if (global_queue.cur_thread_count == 0) {
         // printf("That's a wrap!\n");
         exit(0);
@@ -139,13 +139,13 @@ static void schedule(int signal)
 }
 
 static void timer_handler(int sig) {
-    // printf("--- In timer handler\n");
+    printf("--- In timer handler\n");
     schedule(sig);
     return;
 }
 
 static void exit_handler(void) {
-    // printf("--- In exit handler\n");
+    printf("--- In exit handler\n");
     if (global_queue.cur_thread_count != 0) pthread_exit(NULL);
 }
 
@@ -200,7 +200,7 @@ int pthread_create(
 	void *(*start_routine) (void *), void *arg)
 {
     
-    // printf("--- In pthread_create\n");
+    printf("--- In pthread_create\n");
 	// Create the timer and handler for the scheduler. Create thread 0.
 	static bool is_first_call = true;
 	if (is_first_call)
@@ -294,7 +294,7 @@ void pthread_exit(void *value_ptr)
 	 * - Update the thread's status to indicate that it has exited
 	 */
     
-    // printf("--- In pthread_exit\n");
+    printf("--- In pthread_exit\n");
     
 //     // Remove thread from global queue
 //     global_queue.prev_thread->next_thread =  global_queue.now_thread->next_thread;
@@ -362,14 +362,14 @@ int pthread_mutex_init(
     Behavior is undefined when an already-initialized mutex is re-initialized. Always return 0. 
     */
     
-    // printf("--- In mutex_init!\n");
+    printf("--- In mutex_init!\n");
     
     lock();
     // Init mutex struct
     struct mutex_struct * mutex_str = malloc(sizeof(struct mutex_struct));
     mutex_str->is_locked = false;
     mutex_str->first = NULL;
-    mutex_str->owner_id = 0;
+    // mutex_str->owner_id = 0;
     mutex->__align = (long int) mutex_str;
     
     unlock();
@@ -389,7 +389,7 @@ int pthread_mutex_destroy(
     */
     
     lock();
-    // printf("--- In mutex_destroy!\n");
+    printf("--- In mutex_destroy!\n");
     struct mutex_struct * mutex_str = (struct mutex_struct *) mutex->__align;
     struct blocked_node * temp;
     struct blocked_node * next_temp = mutex_str->first;
@@ -416,7 +416,7 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
      are awoken is undefined. Return 0 on success, or an error code otherwise.
     */
     
-    // printf("--- In mutex_lock!\n");
+    printf("--- In mutex_lock!\n");
     lock();
     
     // struct timespec time_sleep = {.tv_nsec = 500000000};
@@ -427,13 +427,13 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
         unlock();
         return EINVAL; // Error situation, mutex not init
     }
-    if (mutex_str->is_locked && mutex_str->owner_id == pthread_self()) {
-        unlock();
-        return EDEADLK; // Mutex locked twice by its owner
-    }
+    // if (mutex_str->is_locked && mutex_str->owner_id == pthread_self()) {
+    //     unlock();
+    //     return EDEADLK; // Mutex locked twice by its owner
+    // }
     
     if (mutex_str->is_locked) {
-        // printf("--- Thread %ld is blocked on lock %p\n", pthread_self(), mutex);
+        printf("--- Thread %ld is blocked on lock %p\n", pthread_self(), mutex);
         // If locked already acquired, block thread, add to queue, and schedule
         
         global_queue.cur_thread_count--;
@@ -453,7 +453,7 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
         unlock();
         schedule(0);
     } else {
-        mutex_str->owner_id = pthread_self();
+        // mutex_str->owner_id = pthread_self();
         mutex_str->is_locked = true;
         unlock();
     }
@@ -470,7 +470,7 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
     acquiring the lock. Return 0 on success, or an error code otherwise.
     */
     
-    // printf("--- In mutex_unlock!\n");
+    printf("--- In mutex_unlock!\n");
     lock();
     
     // struct timespec time_sleep = {.tv_nsec = 500000000};
@@ -482,10 +482,10 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
         return EINVAL; // Error situation, mutex not init
     }
     
-    if (mutex_str->owner_id != pthread_self()) {
-        unlock();
-        return EPERM; // Error condition, you don't own me!
-    }
+    // if (mutex_str->owner_id != pthread_self()) {
+    //     unlock();
+    //     return EPERM; // Error condition, you don't own me!
+    // }
     
     // If lock's list empty
     if (mutex_str->first == NULL) { 
@@ -509,7 +509,7 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
         temp_blk->thread_block->thr_status = TS_READY;
         
         //Set owner to newly unblocked thread
-        mutex_str->owner_id = first_t;
+        // mutex_str->owner_id = first_t;
         
         // Remove unlocked thread from lock's queue
         struct blocked_node * temp_b_n = mutex_str->first;
@@ -568,7 +568,7 @@ int pthread_barrier_destroy(pthread_barrier_t *barrier)
     // printf("--- In barrier destroy!\n");
     
     struct barrier_struct * barrier_str = (struct barrier_struct *) barrier->__align;
-    if (barrier_str == NULL) return -1;
+    // if (barrier_str == NULL) return -1;
     
     free(barrier_str->thr_list);
     free(barrier_str);
@@ -594,7 +594,7 @@ int pthread_barrier_wait(pthread_barrier_t *barrier)
     lock();
     
     struct barrier_struct * barrier_str = (struct barrier_struct *) barrier->__align;
-    if (barrier_str == NULL) return -1;
+    // if (barrier_str == NULL) return -1;
     
     // Enough threads enter barrier
     if (barrier_str->blocked_count + 1 == barrier_str->target_count) {
@@ -610,6 +610,7 @@ int pthread_barrier_wait(pthread_barrier_t *barrier)
                 temp_t = temp_blk->thread_block->thr_id;
             }
             
+            global_queue.cur_thread_count++;
             temp_blk->thread_block->thr_status = TS_READY;
             
         }
@@ -622,6 +623,7 @@ int pthread_barrier_wait(pthread_barrier_t *barrier)
         barrier_str->thr_list[barrier_str->blocked_count] = pthread_self();
         barrier_str->blocked_count++;
         
+        global_queue.cur_thread_count--;
         global_queue.now_thread->thread_block->thr_status = TS_BLOCKED;
         
         unlock();
